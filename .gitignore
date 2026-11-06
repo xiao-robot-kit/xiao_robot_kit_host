@@ -1,0 +1,10 @@
+# 工具态（非仓资产）
+.mimosa/
+.v2c/
+__pycache__/
+*.pyc
+.history/
+*.bak
+
+# 服务器单实例运行记录（pid/port，运行时生成）
+.runtime/

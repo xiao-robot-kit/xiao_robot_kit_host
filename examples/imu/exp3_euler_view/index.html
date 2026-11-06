@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>exp3 · 欧拉角姿态流 / Euler-angle attitude stream</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: Consolas, "Microsoft YaHei", monospace; margin: 0 auto;
+         max-width: 780px; padding: 16px; background: #14181d; color: #cfd8dc; }
+  h1 { font-size: 20px; margin: 8px 0 2px; }
+  h1 small { color: #78909c; font-weight: normal; font-size: 13px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+  .seg { display: inline-flex; border: 1px solid #2c353d; border-radius: 4px; overflow: hidden; }
+  .seg button { background: transparent; border: 0; color: #cfd8dc; font: inherit;
+                font-size: 13px; padding: 5px 12px; cursor: pointer; opacity: .65; }
+  .seg button.on { background: rgba(79, 195, 247, .18); color: #4fc3f7; opacity: 1;
+                   box-shadow: inset 0 0 0 1px rgba(79, 195, 247, .45); }
+  .bar button { background: #1c232a; border: 1px solid #2c353d; color: #cfd8dc;
+                font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 4px;
+                cursor: pointer; }
+  .bar button:hover { border-color: #4fc3f7; }
+  #btn-lang { min-width: 52px; }
+  #realbar label { font-size: 13px; color: #90a4ae; }
+  #target { flex: 1 1 320px; min-width: 260px; background: #1c232a; border: 1px solid #2c353d;
+            color: #cfd8dc; font: inherit; font-size: 13px; padding: 5px 10px;
+            border-radius: 4px; }
+  #target:focus { outline: none; border-color: #4fc3f7; }
+  #ports-info { font-size: 12px; color: #78909c; flex: 1 1 100%; }
+  [hidden] { display: none !important; }
+  #status { font-size: 13px; color: #78909c; }
+  #status.on { color: #81c784; }
+  .meta { color: #78909c; font-size: 12px; margin: 6px 0 12px; line-height: 1.6; }
+  table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid #2c353d; padding: 5px 10px; text-align: right; }
+  th { background: #1c232a; color: #90a4ae; text-align: left; }
+  td.leg { text-align: left; width: 130px; }
+  .sw { display: inline-block; width: 10px; height: 10px; margin-right: 6px; }
+  canvas { background: #1a2027; border: 1px solid #2c353d; display: block;
+           margin: 8px 0; width: 100%; height: auto; }
+  .note { background: #1c232a; border-left: 4px solid #ffb74d; padding: 10px 14px;
+          font-size: 13px; line-height: 1.7; }
+  .note b { color: #ffb74d; }
+  .note code { color: #81c784; }
+  .foot { color: #607d8b; font-size: 11px; margin-top: 10px; line-height: 1.6; }
+  h2 { font-size: 14px; margin: 18px 0 4px; color: #90a4ae; font-weight: normal; }
+  h2 small { color: #607d8b; font-size: 11px; }
+  #btn-read:disabled, #btn-zero:disabled, #btn-tc:disabled, #btn-tc-en:disabled
+  { opacity: .45; cursor: default; border-color: #2c353d; }
+  #tcsec { width: 64px; background: #1c232a; border: 1px solid #2c353d; color: #cfd8dc;
+           font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 4px; }
+  #tc-label { font-size: 13px; color: #90a4ae; }
+  #cmd-status { font-size: 12px; color: #ffb74d; flex: 1 1 100%; }
+  #tbl-state { font-size: 12px; }
+  #tbl-state th, #tbl-state td { padding: 4px 6px; text-align: left; }
+  #tbl-state td.leg { color: #90a4ae; }
+  #tbl-cal { font-size: 12px; }
+  #tbl-cal th, #tbl-cal td { padding: 4px 6px; text-align: right; }
+  #tbl-cal td.leg, #tbl-cal th { text-align: left; }
+  #tbl-cal tr.delta td { color: #81c784; border-top: 2px solid #2c353d; }
+  #calib-hint { font-size: 12px; color: #78909c; margin: 4px 0 12px; line-height: 1.6; }
+  #textlog { background: #1a2027; border: 1px solid #2c353d; border-radius: 4px;
+             padding: 6px 10px; font-size: 12px; line-height: 1.7; min-height: 22px;
+             max-height: 160px; overflow-y: auto; }
+  .txt-line { color: #90a4ae; white-space: pre-wrap; word-break: break-all; }
+  .txt-line.txt-cal { color: #81c784; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1><span data-i18n="title"></span> <small data-i18n="title.sub"></small></h1>
+
+<div class="bar">
+  <span class="seg" id="modebar"></span>
+  <button id="btn-run" type="button"></button>
+  <button id="btn-lang" type="button"></button>
+  <span id="status"></span>
+</div>
+<div class="bar" id="cmdbar">
+  <button id="btn-read" type="button"></button>
+  <button id="btn-zero" type="button"></button>
+  <label id="tc-label" for="tcsec" data-i18n="tc.sec"></label>
+  <input id="tcsec" type="number" min="1" max="255" value="30">
+  <button id="btn-tc" type="button"></button>
+  <button id="btn-tc-en" type="button"></button>
+  <span id="cmd-status"></span>
+</div>
+<div class="bar" id="realbar" hidden>
+  <label id="target-label" for="target" data-i18n="target.label"></label>
+  <input id="target" type="text" list="ports" autocomplete="off" spellcheck="false">
+  <datalist id="ports"></datalist>
+  <button id="btn-ports" type="button"></button>
+  <span id="ports-info"></span>
+</div>
+<div class="meta" id="meta"></div>
+
+<table id="tbl">
+  <tr>
+    <th data-i18n="th.axis"></th><th data-i18n="th.deg"></th><th data-i18n="th.rad"></th>
+    <th data-i18n="th.peak"></th><th data-i18n="th.range"></th>
+  </tr>
+  <tr><td class="leg"><span class="sw" style="background:#4fc3f7"></span><span data-i18n="row.roll"></span></td>
+      <td id="v-roll">—</td><td id="r-roll">—</td><td id="p-roll">—</td>
+      <td data-i18n="range.rp"></td></tr>
+  <tr><td class="leg"><span class="sw" style="background:#ffb74d"></span><span data-i18n="row.pitch"></span></td>
+      <td id="v-pitch">—</td><td id="r-pitch">—</td><td id="p-pitch">—</td>
+      <td data-i18n="range.pitch"></td></tr>
+  <tr><td class="leg"><span class="sw" style="background:#81c784"></span><span data-i18n="row.yaw"></span></td>
+      <td id="v-yaw">—</td><td id="r-yaw">—</td><td id="p-yaw">—</td>
+      <td data-i18n="range.rp"></td></tr>
+</table>
+
+<canvas id="bars" width="748" height="230"></canvas>
+
+<h2><span data-i18n="calib.title"></span> <small data-i18n="calib.sub"></small></h2>
+<table id="tbl-cal">
+  <tr>
+    <th data-i18n="calib.th.row"></th>
+    <th>ax (g)</th><th>ay (g)</th><th>az (g)</th>
+    <th>gx (dps)</th><th>gy (dps)</th><th>gz (dps)</th>
+  </tr>
+  <tr><td class="leg" data-i18n="calib.row.raw"></td>
+      <td id="c-raw-ax">—</td><td id="c-raw-ay">—</td><td id="c-raw-az">—</td>
+      <td id="c-raw-gx">—</td><td id="c-raw-gy">—</td><td id="c-raw-gz">—</td></tr>
+  <tr><td class="leg" data-i18n="calib.row.deb"></td>
+      <td id="c-deb-ax">—</td><td id="c-deb-ay">—</td><td id="c-deb-az">—</td>
+      <td id="c-deb-gx">—</td><td id="c-deb-gy">—</td><td id="c-deb-gz">—</td></tr>
+  <tr><td class="leg" data-i18n="calib.row.fbias"></td>
+      <td id="c-fbias-ax">—</td><td id="c-fbias-ay">—</td><td id="c-fbias-az">—</td>
+      <td id="c-fbias-gx">—</td><td id="c-fbias-gy">—</td><td id="c-fbias-gz">—</td></tr>
+  <tr><td class="leg" data-i18n="calib.row.ack_bias"></td>
+      <td id="c-ack-ax">—</td><td id="c-ack-ay">—</td><td id="c-ack-az">—</td>
+      <td id="c-ack-gx">—</td><td id="c-ack-gy">—</td><td id="c-ack-gz">—</td></tr>
+  <tr class="delta"><td class="leg" data-i18n="calib.row.delta"></td>
+      <td id="c-dlt-ax">—</td><td id="c-dlt-ay">—</td><td id="c-dlt-az">—</td>
+      <td id="c-dlt-gx">—</td><td id="c-dlt-gy">—</td><td id="c-dlt-gz">—</td></tr>
+  <tr><td class="leg" data-i18n="calib.temp"></td><td id="v-temp" colspan="6">—</td></tr>
+</table>
+<table id="tbl-state">
+  <tr><td class="leg" data-i18n="calib.f.biasValid"></td><td id="s-bias-valid">—</td>
+      <td class="leg" data-i18n="calib.f.tcValid"></td><td id="s-tc-valid">—</td>
+      <td class="leg" data-i18n="calib.f.enabled"></td><td id="s-enabled">—</td></tr>
+  <tr><td class="leg" data-i18n="calib.f.tempRef"></td><td id="s-tref">—</td>
+      <td class="leg" data-i18n="calib.f.kg"></td><td id="s-kg">—</td>
+      <td class="leg" data-i18n="calib.f.applied"></td><td id="s-applied">—</td></tr>
+</table>
+<div id="calib-hint"></div>
+
+<h2 data-i18n="textlog.title"></h2>
+<div id="textlog"></div>
+
+<div class="note" data-i18n-html="note.body"></div>
+
+<div class="foot" data-i18n-html="foot"></div>
+
+<script>
+"use strict";
+/* 自研零依赖：数值表 + 三轴条形 canvas（中心零点，pitch 域 ±90° 带锁边界，roll/yaw ±180°）。
+   模式与语言口径与 web/assets/ui-shell.js 同键同语义（本页零第三方，故内联实现）：
+     xrk.mode = sim|real（缺省 real）、xrk.lang = zh|en（缺省 zh）、
+     xrk.target = 真实模式目标串（serial:COM5@115200 / tcp:127.0.0.1:5558）；
+     页面加载只按持久值高亮模式，绝不自动 POST 启动——必须点「启动仿真 / 连接真实」。 */
+(function () {
+  var LS_MODE = "xrk.mode", LS_LANG = "xrk.lang", LS_TARGET = "xrk.target";
+  var MODES = ["sim", "real"], LANGS = ["zh", "en"];
+  var DICT = {
+    zh: {
+      "title": "实验三：欧拉角姿态流",
+      "doc.title": "exp3 · 欧拉角姿态流",
+      "title.sub": "PROTO_TYPE_EULER (0x03) · 12B · 弧度 · ZYX",
+      "mode.sim": "仿真", "mode.real": "真实",
+      "mode.simTip": "仿真模式：本机合成数据源（不连设备、不连 QEMU）",
+      "mode.realTip": "真实模式：连接设备串口或外部桥（需先就绪）",
+      "btn.startSim": "启动仿真", "btn.stopSim": "停止仿真",
+      "btn.connect": "连接真实", "btn.disconnect": "断开",
+      "btn.lang": "EN", "btn.langTip": "Switch to English",
+      "target.label": "目标",
+      "target.ph": "serial:COM5@115200",
+      "target.title": "真实模式目标串：serial:<COMx>@<baud>（物理串口，波特率可省，省则 115200）" +
+                      " 或 tcp:<host>:<port>（外部桥，如 QEMU UART0 桥 tcp:127.0.0.1:5558）",
+      "btn.ports": "刷新串口",
+      "btn.portsTip": "探测本机串口，填进输入框联想列表（不覆盖已输入内容）",
+      "ports.found": "探测到 {n} 个串口，已加入联想列表（选一条即得 serial:<COMx>@115200）",
+      "ports.error": "串口探测失败：{err}",
+      "btn.read": "读取当前值",
+      "btn.readTip": "GET_BIAS(0x02) + GET_STATUS(0x0A)：读 MCU 当前零偏与状态",
+      "btn.zero": "一键调零",
+      "btn.zeroTip": "CALIBRATE(0x01)：MCU 内部采集并计算零偏（异步，采完才回 ACK）",
+      "btn.tc": "温漂补偿",
+      "btn.tcTip": "TEMP_CALIB(0x03,秒)：MCU 内部采集温漂（采集期需温差 ≥3°C）",
+      "btn.tcEn": "温漂开关",
+      "btn.tcEnTip": "SET_FLAGS(0x09) 开关 TEMPCOMP_EN（只控制是否应用，不等于是否已标定）",
+      "tc.sec": "采集秒数",
+      "cmd.running": "已下发 {func}，等 MCU 回执…",
+      "cmd.calibrating": "校准中…（采集在 MCU 内部，等 ACK）",
+      "cmd.ok": "{func}：回执 ok",
+      "cmd.notConnected": "未连接：先「启动仿真」或「连接真实」",
+      "cmd.timeout": "{func}：等 ACK 超时",
+      "cmd.ackError": "{func}：MCU 回 status={status}（{name}）",
+      "cmd.badArgs": "{func}：功能码或参数不认",
+      "calib.title": "零点校准（MCU 内部 · 只读展示）",
+      "calib.sub": "0x02 帧 raw·deb·bias + GET_BIAS / GET_STATUS / GET_TC_STATE 回执",
+      "calib.th.row": "量",
+      "calib.row.raw": "raw 原始",
+      "calib.row.deb": "deb 去偏（MCU 已减）",
+      "calib.row.fbias": "0x02 bias 块",
+      "calib.row.ack_bias": "GET_BIAS 回执",
+      "calib.row.delta": "Δ = raw − deb",
+      "calib.temp": "温度",
+      "calib.f.biasValid": "零偏已标定",
+      "calib.f.tcValid": "温漂已标定",
+      "calib.f.enabled": "温补开关",
+      "calib.f.tempRef": "温度 t_now/t_ref",
+      "calib.f.kg": "温漂 k（dps/°C）",
+      "calib.f.applied": "温补应用次数",
+      "calib.on": "是", "calib.off": "否",
+      "calib.hint.idle": "未启动数据源：先点「启动仿真 / 连接真实」",
+      "calib.hint.empty": "尚无回执：点「读取当前值」（GET_BIAS + GET_STATUS）或「一键调零」",
+      "calib.hint.sim": "sim：虚拟 MCU 应答，采集与拟合全在虚拟 MCU 内部（与固件同语义）",
+      "calib.hint.real": "real：固件回执，主机只读展示（不在主机侧减偏）",
+      "textlog.title": "TEXT 日志（0x7F）",
+      "textlog.empty": "（无 TEXT 帧）",
+      "status.idle": "未启动", "status.connected": "已连接", "status.disconnected": "未连接",
+      "meta.idle": "未启动：点「启动仿真」或「连接真实」才开始（不自动连任何数据源）",
+      "meta.line": "模式 {mode} · 连接 {conn} · 帧 {frames}（0x03 = {euler}）· seq 跳变 {jumps} · 坏帧重同步 {bad}",
+      "meta.target": "目标 {target}",
+      "meta.offline": "连接 euler_view.py 失败（服务已停止？）",
+      "meta.err": "模式切换失败：{err}",
+      "th.axis": "轴", "th.deg": "角度 (deg)", "th.rad": "弧度 (rad)",
+      "th.peak": "峰值 |max| (deg，本次开页)", "th.range": "显示域",
+      "row.roll": "roll 绕 X", "row.pitch": "pitch 绕 Y", "row.yaw": "yaw 绕 Z",
+      "range.rp": "±180°", "range.pitch": "±90°（红虚线 = 万向锁边界）",
+      "note.body":
+        "<b>教学对照——为什么还有实验四（四元数）？</b><br>" +
+        "本页显示的三个角是固件 <code>mahony_get_angles</code> 按 <b>ZYX 约定</b>从姿态" +
+        "四元数分解出的欧拉角（人读直观）。但当 <b>pitch 逼近 ±90°</b>（上图中红虚线）时，" +
+        "ZYX 分解到达<b>万向节死锁（gimbal lock）</b>：roll 与 yaw 不再是两个独立自由度，" +
+        "只有 (yaw−roll) 这一个组合还能被分辨——三参数表示在此丢掉一个自由度，且分解" +
+        "导数发散。host 侧 gcc 自检（<code>testing/exp3_sim_main.c</code> B 组）用数值" +
+        "证明了这一点：pitch=+90° 时 (roll,yaw)=(0.10,0.60) 与 (−0.40,0.10) 两个不同" +
+        "姿态映射到<b>同一个四元数</b>（分量差 ~1e-8），回读只能得到一组任意的" +
+        "(roll,yaw)。<br>" +
+        "实验四（<code>exp4_quat</code>）走 <code>0x04</code> 四元数帧——4 参数表示" +
+        "<b>无奇异</b>，可插值、可平滑连乘，是 3D/渲染主通道；本实验 0x03 帧是教学" +
+        "对照通道。两实验跑同一个 Mahony 滤波器、同一组预设参数，唯一变量就是" +
+        "姿态表示法——这正是把两个实验对照着做的原因。",
+      "foot":
+        "数据源：euler_view.py（--mode sim 本机合成 / --mode real 连设备串口或外部桥，" +
+        "如 QEMU UART0 桥）；模式与语言选择持久化在 localStorage xrk.mode / xrk.lang。" +
+        "帧规格单源：固件侧 proto/frame.h（公开协议见 xiao_robot_kit_qemu docs/protocol-spec.md） · 公开协议 xiao_robot_kit_qemu docs/protocol-spec.md",
+    },
+    en: {
+      "title": "Exp 3: Euler-angle attitude stream",
+      "doc.title": "exp3 · Euler-angle attitude stream",
+      "title.sub": "PROTO_TYPE_EULER (0x03) · 12B · radians · ZYX",
+      "mode.sim": "Sim", "mode.real": "Real",
+      "mode.simTip": "Simulation mode: local synthetic source (no device, no QEMU)",
+      "mode.realTip": "Real mode: device serial port or external bridge (start it first)",
+      "btn.startSim": "Start sim", "btn.stopSim": "Stop sim",
+      "btn.connect": "Connect real", "btn.disconnect": "Disconnect",
+      "btn.lang": "中文", "btn.langTip": "切换到中文",
+      "target.label": "Target",
+      "target.ph": "serial:COM5@115200",
+      "target.title": "Real-mode target: serial:<COMx>@<baud> (physical port; baud optional, 115200 when omitted)" +
+                      " or tcp:<host>:<port> (external bridge, e.g. QEMU UART0 bridge tcp:127.0.0.1:5558)",
+      "btn.ports": "Refresh ports",
+      "btn.portsTip": "Probe local serial ports into the input's suggestion list (never overwrites typed text)",
+      "ports.found": "Found {n} serial port(s), added to suggestions (pick one to get serial:<COMx>@115200)",
+      "ports.error": "Port probe failed: {err}",
+      "btn.read": "Read values",
+      "btn.readTip": "GET_BIAS(0x02) + GET_STATUS(0x0A): read the MCU's current bias and status",
+      "btn.zero": "Zero now",
+      "btn.zeroTip": "CALIBRATE(0x01): the MCU collects and computes the bias itself (async, ACK on completion)",
+      "btn.tc": "Temp calib",
+      "btn.tcTip": "TEMP_CALIB(0x03, seconds): MCU-side drift collection (needs >= 3°C span)",
+      "btn.tcEn": "Temp comp",
+      "btn.tcEnTip": "SET_FLAGS(0x09) toggles TEMPCOMP_EN (controls whether it is applied, not whether it is calibrated)",
+      "tc.sec": "Collect seconds",
+      "cmd.running": "Sent {func}, waiting for the MCU ack…",
+      "cmd.calibrating": "Calibrating… (collection runs inside the MCU, waiting for ACK)",
+      "cmd.ok": "{func}: ack ok",
+      "cmd.notConnected": "Not connected: press Start sim or Connect real first",
+      "cmd.timeout": "{func}: ack timeout",
+      "cmd.ackError": "{func}: MCU replied status={status} ({name})",
+      "cmd.badArgs": "{func}: unknown function code or bad arguments",
+      "calib.title": "Zero calibration (MCU-side · read-only)",
+      "calib.sub": "0x02 frame raw·deb·bias + GET_BIAS / GET_STATUS / GET_TC_STATE acks",
+      "calib.th.row": "Row",
+      "calib.row.raw": "raw",
+      "calib.row.deb": "deb (MCU-subtracted)",
+      "calib.row.fbias": "0x02 bias block",
+      "calib.row.ack_bias": "GET_BIAS ack",
+      "calib.row.delta": "Δ = raw − deb",
+      "calib.temp": "Temperature",
+      "calib.f.biasValid": "bias valid",
+      "calib.f.tcValid": "drift valid",
+      "calib.f.enabled": "temp comp on",
+      "calib.f.tempRef": "t_now / t_ref",
+      "calib.f.kg": "drift k (dps/°C)",
+      "calib.f.applied": "apply count",
+      "calib.on": "yes", "calib.off": "no",
+      "calib.hint.idle": "No data source started: press Start sim / Connect real first",
+      "calib.hint.empty": "No ack yet: press Read values (GET_BIAS + GET_STATUS) or Zero now",
+      "calib.hint.sim": "sim: a virtual MCU answers — collection and fitting stay inside it (same semantics as firmware)",
+      "calib.hint.real": "real: firmware acks; the host only displays them (no host-side de-biasing)",
+      "textlog.title": "TEXT log (0x7F)",
+      "textlog.empty": "(no TEXT frame)",
+      "status.idle": "Not started", "status.connected": "Connected",
+      "status.disconnected": "Disconnected",
+      "meta.idle": "Not started: press Start sim or Connect real (no source is opened automatically)",
+      "meta.line": "Mode {mode} · {conn} · frames {frames} (0x03 = {euler}) · seq jumps {jumps} · bad resync {bad}",
+      "meta.target": "target {target}",
+      "meta.offline": "Cannot reach euler_view.py (server stopped?)",
+      "meta.err": "Mode switch failed: {err}",
+      "th.axis": "Axis", "th.deg": "Angle (deg)", "th.rad": "Radians (rad)",
+      "th.peak": "Peak |max| (deg, this page session)", "th.range": "Display range",
+      "row.roll": "roll about X", "row.pitch": "pitch about Y", "row.yaw": "yaw about Z",
+      "range.rp": "±180°", "range.pitch": "±90° (red dashed = gimbal-lock limit)",
+      "note.body":
+        "<b>Teaching companion — why is there an experiment 4 (quaternions)?</b><br>" +
+        "The three angles on this page are decomposed from the attitude quaternion by the " +
+        "firmware's <code>mahony_get_angles</code> using the <b>ZYX convention</b> (easy for " +
+        "humans to read). But as <b>pitch approaches ±90°</b> (the red dashed lines above), " +
+        "the ZYX decomposition hits <b>gimbal lock</b>: roll and yaw are no longer two " +
+        "independent degrees of freedom — only the combination (yaw−roll) remains " +
+        "distinguishable, so the three-parameter form loses one DOF and its derivative " +
+        "diverges. The host-side gcc self-check (<code>testing/exp3_sim_main.c</code>, group B) " +
+        "proves it numerically: at pitch=+90° the two different attitudes " +
+        "(roll,yaw)=(0.10,0.60) and (−0.40,0.10) map to <b>the same quaternion</b> " +
+        "(component difference ~1e-8), and reading back yields one arbitrary (roll,yaw).<br>" +
+        "Experiment 4 (<code>exp4_quat</code>) sends <code>0x04</code> quaternion frames — " +
+        "the four-parameter form is <b>singularity-free</b>, interpolates and multiplies " +
+        "smoothly, and is the main 3D/rendering channel; the 0x03 frames here are the " +
+        "teaching companion channel. Both experiments run the same Mahony filter with the " +
+        "same preset parameters — pose representation is the only variable, which is exactly " +
+        "why they are meant to be compared side by side.",
+      "foot":
+        "Source: euler_view.py (--mode sim local synthetic / --mode real device serial or " +
+        "external bridge, e.g. the QEMU UART0 bridge); mode and language persist in " +
+        "localStorage xrk.mode / xrk.lang. Frame spec single source: " +
+        "固件侧 proto/frame.h（公开协议见 xiao_robot_kit_qemu docs/protocol-spec.md） · 公开协议 xiao_robot_kit_qemu docs/protocol-spec.md",
+    },
+  };
+
+  var RANGES = { roll: 180, pitch: 90, yaw: 180 };
+  var COLORS = { roll: "#4fc3f7", pitch: "#ffb74d", yaw: "#81c784" };
+  var AXES = ["roll", "pitch", "yaw"];
+  var peaks = { roll: 0, pitch: 0, yaw: 0 };
+  /* 六轴列（与服务端 0x02 块序 / GET_BIAS 回执映射一致：ax,ay,az g ｜ gx,gy,gz dps） */
+  var AXES6 = [{ k: "ax", i: 0, dig: 4 }, { k: "ay", i: 1, dig: 4 }, { k: "az", i: 2, dig: 4 },
+               { k: "gx", i: 3, dig: 3 }, { k: "gy", i: 4, dig: 3 }, { k: "gz", i: 5, dig: 3 }];
+  var TEMPCOMP_EN = 0x0001;       /* SYS_FLAGS bit0（与服务端 SYSF_TEMPCOMP_EN 同值） */
+  var CMD_TIMEOUT_MS = 8000;      /* 同步命令的前端兵底（服务端 3s 就回，这里只防挂死） */
+  var CAL_TIMEOUT_MS = 25000;     /* CALIBRATE：服务端上限 20s（采集 500 样本 ≈ 5s）+ 余量 */
+  var TC_MARGIN_MS = 20000;       /* TEMP_CALIB：秒数 + 采集收尾余量（同服务端口径） */
+
+  /* —— 偏好持久化（无 localStorage 时退化内存字典：隐私模式/node 桩）—— */
+  var mem = {};
+  var store = (function () {
+    try {
+      var ls = window.localStorage;
+      if (ls && typeof ls.getItem === "function") { ls.getItem(LS_MODE); return ls; }
+    } catch (e) { /* 落到内存字典 */ }
+    return {
+      getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; },
+      setItem: function (k, v) { mem[k] = String(v); },
+    };
+  })();
+
+  function readPref(key, allowed, fallback) {
+    var v = store.getItem(key);
+    return allowed.indexOf(v) >= 0 ? v : fallback;
+  }
+
+  var pref = {
+    mode: readPref(LS_MODE, MODES, "real"),   // 缺省真实：不点不启动（禁隐式仿真）
+    lang: readPref(LS_LANG, LANGS, "zh"),     // 缺省中文
+  };
+  /* 服务端实际状态（/api/euler 回报；页面不臆测） */
+  var srv = { mode: "none", target: "", connected: false, frames: 0, euler_frames: 0,
+              seq_jumps: 0, bad_resync: 0, texts: [], cal: null, cal_frames: 0,
+              ack_frames: 0, imu: {} };
+  /* 命令交互态：busy=有命令在飞（三个按钮同步置灰）；note=状态行文本（zh/en 动态重建） */
+  var cmd = { busy: false, note: "", lastNote: "", timer: 0 };
+
+  function t(key, vars) {
+    var table = DICT[pref.lang] || DICT.zh;
+    var s = Object.prototype.hasOwnProperty.call(table, key) ? table[key] : key;
+    if (vars) {
+      Object.keys(vars).forEach(function (name) {
+        s = s.split("{" + name + "}").join(String(vars[name]));
+      });
+    }
+    return s;
+  }
+
+  /* —— 一次性提示（错误/离线）：写在 #meta，8s 内不被快照覆盖 —— */
+  var flashText = "", flashUntil = 0;
+  function showFlash(text) {
+    flashText = text;
+    flashUntil = Date.now() + 8000;
+    renderMeta();
+  }
+
+  function byId(id) { return document.getElementById(id); }
+
+  /* —— 真实模式目标输入（#target）：值就是服务端 /api/mode 认的目标串 —— */
+  var savedTarget = (store.getItem(LS_TARGET) || "").trim();
+  var targetTouched = savedTarget !== "";   /* 已持久化过就不再被服务端值覆盖 */
+
+  function targetText() {          /* 空输入 = 按 placeholder 默认值（页面不凭空猜目标） */
+    var el = byId("target");
+    var v = (el.value || "").trim();
+    return v || el.placeholder || "serial:COM5@115200";
+  }
+
+  /* —— 静态文案：所有 [data-i18n] / [data-i18n-html] 一键重建（切换即时生效）—— */
+  function applyI18n() {
+    var nodes = document.querySelectorAll("[data-i18n],[data-i18n-html]");
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      var key = el.getAttribute("data-i18n");
+      if (key) el.textContent = t(key);
+      key = el.getAttribute("data-i18n-html");
+      if (key) el.innerHTML = t(key);
+    }
+    document.documentElement.setAttribute("lang", pref.lang === "en" ? "en" : "zh-CN");
+    document.title = t("doc.title");
+    var el = byId("target");
+    el.setAttribute("placeholder", t("target.ph"));   /* 空输入时当默认目标串用 */
+    el.title = t("target.title");
+    var ports = byId("btn-ports");
+    ports.textContent = t("btn.ports");
+    ports.title = t("btn.portsTip");
+    /* 命令按钮是 JS 文字（无 data-i18n），切语言时一并重建 */
+    [["btn-read", "btn.read", "btn.readTip"], ["btn-zero", "btn.zero", "btn.zeroTip"],
+     ["btn-tc", "btn.tc", "btn.tcTip"], ["btn-tc-en", "btn.tcEn", "btn.tcEnTip"]]
+      .forEach(function (row) {
+        var b = byId(row[0]);
+        b.textContent = t(row[1]);
+        b.title = t(row[2]);
+      });
+    lastTextKey = null;                                /* 切语言后 TEXT 日志（含空态）重建 */
+  }
+
+  /* —— 头部控件（分段开关 / 运行按钮 / 语言按钮 / 状态）—— */
+  function hit(serverMode) {          /* 服务端在跑的模式与本页当前档一致？ */
+    return srv.mode !== "none" && srv.mode === pref.mode;
+  }
+
+  function renderModeBar() {
+    var bar = byId("modebar");
+    bar.textContent = "";
+    MODES.forEach(function (mode) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = t("mode." + mode);
+      btn.title = t("mode." + mode + "Tip");
+      btn.setAttribute("data-mode", mode);
+      btn.className = pref.mode === mode ? "on" : "";
+      btn.onclick = function () {           /* 只改档位 + 持久化，不启动任何数据源 */
+        pref.mode = mode;
+        store.setItem(LS_MODE, mode);
+        renderChrome();
+      };
+      bar.appendChild(btn);
+    });
+  }
+
+  function renderChrome() {
+    renderModeBar();
+    byId("realbar").hidden = pref.mode !== "real";   /* 目标输入只在真实模式出现 */
+    var run = byId("btn-run");
+    if (hit()) {
+      run.textContent = pref.mode === "sim" ? t("btn.stopSim") : t("btn.disconnect");
+    } else {
+      run.textContent = pref.mode === "sim" ? t("btn.startSim") : t("btn.connect");
+    }
+    var lang = byId("btn-lang");
+    lang.textContent = t("btn.lang");
+    lang.title = t("btn.langTip");
+    var status = byId("status");
+    var word = srv.mode === "none" ? t("status.idle")
+             : (srv.connected ? t("status.connected") : t("status.disconnected"));
+    status.textContent = word;
+    status.className = srv.connected && srv.mode !== "none" ? "on" : "";
+  }
+
+  function renderMeta() {
+    var meta = byId("meta");
+    if (flashText && Date.now() < flashUntil) {   /* 一次性提示不被 100ms 轮询的快照冲掉 */
+      meta.textContent = flashText;
+      return;
+    }
+    if (srv.mode === "none") { meta.textContent = t("meta.idle"); return; }
+    var line = t("meta.line", {
+      mode: t("mode." + srv.mode),
+      conn: srv.connected ? t("status.connected") : t("status.disconnected"),
+      frames: srv.frames, euler: srv.euler_frames,
+      jumps: srv.seq_jumps, bad: srv.bad_resync,
+    });
+    if (srv.mode === "real" && srv.target) {
+      line += " · " + t("meta.target", { target: srv.target });
+    }
+    meta.textContent = line;
+  }
+
+  /* —— 刷新串口：GET /api/ports → 填 <datalist>（只做联想，绝不改 #target 的值）—— */
+  function refreshPorts() {
+    return fetch("/api/ports").then(function (r) { return r.json(); }).then(function (s) {
+      var list = byId("ports");
+      var ports = (s && s.ports) || [];
+      list.textContent = "";
+      ports.forEach(function (p) {
+        if (!p || !p.device) { return; }
+        var opt = document.createElement("option");
+        opt.value = "serial:" + p.device + "@115200";   /* 选中即合法目标串 */
+        opt.label = p.desc ? p.device + " — " + p.desc : p.device;
+        list.appendChild(opt);
+      });
+      byId("ports-info").textContent = s && s.error ? t("ports.error", { err: s.error })
+                                                     : t("ports.found", { n: ports.length });
+    }).catch(function () {
+      byId("ports-info").textContent = t("meta.offline");
+    });
+  }
+
+  /* —— 显式切换：只有用户点「启动仿真 / 连接真实 / 停止 / 断开」才 POST —— */
+  function postMode(value) {
+    var url = "/api/mode?value=" + encodeURIComponent(value);
+    if (value === "real") {          /* 真实模式带上目标（空输入 = placeholder 默认） */
+      var tgt = targetText();
+      var box = byId("target");
+      if (!(box.value || "").trim()) { box.value = tgt; targetTouched = true; }
+      store.setItem(LS_TARGET, tgt);   /* 连过的目标下次开页直接回填 */
+      url += "&target=" + encodeURIComponent(tgt);
+    }
+    return fetch(url, { method: "POST" }).then(function (r) { return r.json(); })
+      .then(function (s) {
+        if (s && s.error) {           /* 目标串非法等：服务端拒绝，档位不变 */
+          showFlash(t("meta.err", { err: s.error }));
+        }
+        srv.mode = s.mode || "none";
+        srv.connected = !!s.connected;
+        cmd.note = "";                  /* 换档位/停源：上一条命令回执不再适用 */
+        if (srv.mode === "none") { peaks = { roll: 0, pitch: 0, yaw: 0 }; }
+        renderChrome();
+        renderMeta();
+        renderCalib();
+        setCmdBusy(false, "");
+      }).catch(function () {
+        showFlash(t("meta.offline"));
+      });
+  }
+
+  /* ═══ 零点校准：三个控件（与 IMU 统一页同语义）—— 采集与拟合全在 MCU，主机只发命令 + 读数据
+     ① 读取当前值 → GET_BIAS(0x02) + GET_STATUS(0x0A)
+     ② 一键调零 → CALIBRATE(0x01)（异步，等 ACK；期间按钮置灰 +「校准中…」）
+     ③ 温漂补偿 → TEMP_CALIB(0x03, 秒) / SET_FLAGS(0x09) 开关 TEMPCOMP_EN /
+                  GET_TC_STATE(0x10) / GET_DRIFT(0x0D)
+     命令只走 POST /api/imu/cmd（{func, args}）；回执一律显示服务端 code，不自己编结论。═══ */
+
+  function fmt6(axis, v) {
+    if (v === null || v === undefined) { return "—"; }
+    return fmt(v, axis.dig);
+  }
+
+  /* GET_BIAS 回执是 imu_bias_t 口径（gyro 在前），表列是 ax..az,gx..gz → 按列名取值 */
+  function ackBiasAt(bias, axis) { return bias ? bias[axis.k] : null; }
+
+  function renderCalib() {
+    var cal = srv.cal, imu = srv.imu || {};
+    var raw = cal ? cal.raw : null, deb = cal ? cal.deb : null;
+    AXES6.forEach(function (a) {
+      byId("c-raw-" + a.k).textContent = fmt6(a, raw ? raw[a.i] : null);
+      byId("c-deb-" + a.k).textContent = fmt6(a, deb ? deb[a.i] : null);
+      byId("c-fbias-" + a.k).textContent = fmt6(a, cal && cal.bias ? cal.bias[a.i] : null);
+      byId("c-ack-" + a.k).textContent = fmt6(a, ackBiasAt(imu.bias, a));
+      byId("c-dlt-" + a.k).textContent =
+        (raw && deb) ? fmt6(a, raw[a.i] - deb[a.i]) : "—";
+    });
+    byId("v-temp").textContent = (cal && typeof cal.temp === "number")
+      ? cal.temp.toFixed(1) + " \u00B0C" : "—";
+    renderCalibState();
+    byId("calib-hint").textContent = calibHint();
+  }
+
+  function flagText(v) {
+    if (v === null || v === undefined) { return "—"; }
+    return v ? t("calib.on") : t("calib.off");
+  }
+
+  function renderCalibState() {
+    var imu = srv.imu || {};
+    byId("s-bias-valid").textContent = flagText(imu.bias_valid);
+    byId("s-tc-valid").textContent = flagText(imu.tc_valid);
+    byId("s-enabled").textContent = flagText(imu.enabled);
+    byId("s-tref").textContent =
+      (typeof imu.t_now === "number")
+        ? imu.t_now.toFixed(1) + "/" + (typeof imu.t_ref === "number" ? imu.t_ref.toFixed(1) : "—")
+        : "—";
+    byId("s-kg").textContent = imu.k_g
+      ? imu.k_g.map(function (k) { return k.toFixed(4); }).join(" ")
+      : "—";
+    byId("s-applied").textContent =
+      (imu.apply_count === null || imu.apply_count === undefined) ? "—" : String(imu.apply_count);
+  }
+
+  function calibHint() {
+    if (srv.mode === "none") { return t("calib.hint.idle"); }
+    var hasAck = srv.ack_frames > 0;
+    if (!hasAck) { return t("calib.hint.empty"); }
+    return srv.mode === "sim" ? t("calib.hint.sim") : t("calib.hint.real");
+  }
+
+  /* —— 命令执行：一次只飞一个（三个按钮同步置灰），回执按 code 翻译 —— */
+  function setCmdBusy(busy, note) {
+    cmd.busy = busy;
+    cmd.note = note || "";
+    ["btn-read", "btn-zero", "btn-tc", "btn-tc-en"].forEach(function (id) {
+      byId(id).disabled = busy ? true : false;
+    });
+    byId("cmd-status").textContent = cmd.note;
+  }
+
+  function cmdTimeoutMs(func, args) {
+    if (func === "CALIBRATE") { return CAL_TIMEOUT_MS; }
+    if (func === "TEMP_CALIB") { return ((args && args.seconds) || 30) * 1000 + TC_MARGIN_MS; }
+    return CMD_TIMEOUT_MS;
+  }
+
+  function postCmd(func, args) {
+    var body = { func: func };
+    if (args) { body.args = args; }
+    return fetch("/api/imu/cmd", { method: "POST",
+                                   headers: { "Content-Type": "application/json" },
+                                   body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); });
+  }
+
+  function cmdResultText(res) {
+    var code = (res && res.code) || "";
+    var func = (res && res.func) || "?";
+    if (code === "ok") { return t("cmd.ok", { func: func }); }
+    if (code === "notConnected") { return t("cmd.notConnected"); }
+    if (code === "timeout") { return t("cmd.timeout", { func: func }); }
+    if (code === "ackError") {
+      return t("cmd.ackError", { func: func,
+                                  status: res.status,
+                                  name: (res.statusName || "") });
+    }
+    return t("cmd.badArgs", { func: func });
+  }
+
+  /* 顺序执行一串命令（前一步非 ok 就停）：读取/调零/温漂都是「写 + 回读」的组合 */
+  function runCmdSteps(steps, i) {
+    if (i >= steps.length) {
+      setCmdBusy(false, cmd.lastNote);         /* 最后一步的回执文本留在状态行 */
+      return;
+    }
+    var step = steps[i];
+    var slow = step.func === "CALIBRATE" || step.func === "TEMP_CALIB";
+    setCmdBusy(true, slow ? t("cmd.calibrating")
+                          : t("cmd.running", { func: step.func }));
+    var guard = setTimeout(function () {        /* 前端兵底：后端挂死也要把按钮还回来 */
+      setCmdBusy(false, t("cmd.timeout", { func: step.func }));
+    }, cmdTimeoutMs(step.func, step.args));
+    postCmd(step.func, step.args).then(function (res) {
+      clearTimeout(guard);
+      if (res && res.code === "ok") {
+        cmd.lastNote = cmdResultText(res);
+        runCmdSteps(steps, i + 1);
+      } else {
+        setCmdBusy(false, cmdResultText(res));
+      }
+    }).catch(function () {
+      clearTimeout(guard);
+      setCmdBusy(false, t("meta.offline"));
+    });
+  }
+
+  function onReadClick() {
+    runCmdSteps([{ func: "GET_BIAS" }, { func: "GET_STATUS" }], 0);
+  }
+
+  function onZeroClick() {      /* CALIBRATE 异步：采集结束才回 ACK，回后重读零偏与状态 */
+    runCmdSteps([{ func: "CALIBRATE" }, { func: "GET_BIAS" }, { func: "GET_STATUS" }], 0);
+  }
+
+  function onTempCalibClick() {
+    var el = byId("tcsec");
+    var seconds = parseInt(el.value, 10);
+    if (!(seconds >= 1 && seconds <= 255)) { seconds = 30; el.value = "30"; }
+    runCmdSteps([{ func: "TEMP_CALIB", args: { seconds: seconds } },
+                 { func: "GET_TC_STATE" }, { func: "GET_DRIFT" }], 0);
+  }
+
+  /* SET_FLAGS 是整字写入：先 GET_STATUS 读回 flags，再只翻转 bit0（TEMPCOMP_EN） */
+  function onTempCompToggle() {
+    if (cmd.busy) { return; }
+    setCmdBusy(true, t("cmd.running", { func: "GET_STATUS" }));
+    var guard = setTimeout(function () {
+      setCmdBusy(false, t("cmd.timeout", { func: "SET_FLAGS" }));
+    }, CMD_TIMEOUT_MS * 3);
+    postCmd("GET_STATUS").then(function (res) {
+      if (!res || res.code !== "ok" || !res.data || typeof res.data.flags !== "number") {
+        clearTimeout(guard);
+        setCmdBusy(false, cmdResultText(res));
+        return null;
+      }
+      return postCmd("SET_FLAGS", { flags: res.data.flags ^ TEMPCOMP_EN }).then(function (r2) {
+        if (!r2 || r2.code !== "ok") {
+          clearTimeout(guard);
+          setCmdBusy(false, cmdResultText(r2));
+          return null;
+        }
+        return postCmd("GET_TC_STATE");
+      });
+    }).then(function (r3) {
+      if (r3 === null || r3 === undefined) { return; }   /* 前面的分支已收口 */
+      clearTimeout(guard);
+      setCmdBusy(false, cmdResultText(r3));
+    }).catch(function () {
+      clearTimeout(guard);
+      setCmdBusy(false, t("meta.offline"));
+    });
+  }
+
+  /* —— TEXT 日志（0x7F）：`OK calib …` 行高亮（成功标定一眼可见）—— */
+  var lastTextKey = null;
+  function renderTexts() {
+    var texts = srv.texts || [];
+    var key = texts.join("\u0000");
+    if (key === lastTextKey) { return; }    /* 100ms 轮询下只在线集合变化时重建 DOM */
+    lastTextKey = key;
+    var box = byId("textlog");
+    box.textContent = "";
+    if (!texts.length) {
+      var empty = document.createElement("div");
+      empty.className = "txt-line";
+      empty.textContent = t("textlog.empty");
+      box.appendChild(empty);
+      return;
+    }
+    texts.forEach(function (line) {
+      var el = document.createElement("div");
+      el.className = line.indexOf("OK calib") === 0 ? "txt-line txt-cal" : "txt-line";
+      el.textContent = line;
+      box.appendChild(el);
+    });
+  }
+
+  function onRunClick() {
+    postMode(hit() ? "none" : pref.mode);
+  }
+
+  byId("btn-run").onclick = onRunClick;
+  byId("btn-read").onclick = onReadClick;
+  byId("btn-zero").onclick = onZeroClick;
+  byId("btn-tc").onclick = onTempCalibClick;
+  byId("btn-tc-en").onclick = onTempCompToggle;
+  byId("btn-ports").onclick = refreshPorts;
+  byId("target").oninput = function () {
+    targetTouched = true;
+    store.setItem(LS_TARGET, this.value);
+  };
+  byId("btn-lang").onclick = function () {
+    pref.lang = pref.lang === "zh" ? "en" : "zh";
+    store.setItem(LS_LANG, pref.lang);
+    applyI18n();
+    renderChrome();
+    renderMeta();
+    renderCalib();
+    setCmdBusy(cmd.busy, cmd.note ? cmd.note : "");
+    renderTexts();
+  };
+
+  /* —— 三轴条形 canvas —— */
+  var cv = byId("bars");
+  var ctx = cv.getContext("2d");
+  var W = cv.width, H = cv.height;
+  var ROW_H = 66, PAD_L = 64, PAD_R = 24;
+
+  function fmt(v, dig) { return (v >= 0 ? "+" : "") + v.toFixed(dig); }
+
+  function drawBar(axis, row, angle) {
+    var y0 = 14 + row * ROW_H;
+    var x0 = PAD_L, x1 = W - PAD_R;
+    var mid = (x0 + x1) / 2, half = (x1 - x0) / 2;
+    ctx.strokeStyle = "#2c353d";
+    ctx.beginPath(); ctx.moveTo(mid, y0); ctx.lineTo(mid, y0 + 34); ctx.stroke();
+    /* 刻度 */
+    ctx.fillStyle = "#546e7a"; ctx.font = "10px Consolas"; ctx.textAlign = "center";
+    var step = RANGES[axis] / 3;
+    for (var k = -3; k <= 3; k++) {
+      if (!k) continue;
+      var gx = mid + half * k / 3;
+      ctx.strokeStyle = "#232b32";
+      ctx.beginPath(); ctx.moveTo(gx, y0 + 34); ctx.lineTo(gx, y0 + 38); ctx.stroke();
+      ctx.fillText((k > 0 ? "+" : "") + Math.round(step * k) + "\u00B0", gx, y0 + 49);
+    }
+    /* pitch 锁边界（±90° = 条形图两端，红虚线强调） */
+    if (axis === "pitch") {
+      ctx.strokeStyle = "#e57373"; ctx.setLineDash([4, 3]);
+      [x0, x1].forEach(function (gx) {
+        ctx.beginPath(); ctx.moveTo(gx, y0 - 2); ctx.lineTo(gx, y0 + 36); ctx.stroke();
+      });
+      ctx.setLineDash([]);
+    }
+    /* 数值条（中心零点，左右对称域） */
+    var frac = Math.max(-1, Math.min(1, angle / RANGES[axis]));
+    var bx = frac >= 0 ? mid : mid + half * frac;
+    var bw = Math.abs(half * frac);
+    ctx.fillStyle = COLORS[axis];
+    ctx.fillRect(bx, y0 + 8, Math.max(bw, frac === 0 ? 0 : 1), 18);
+    /* 轴标签 + 当前值 */
+    ctx.fillStyle = COLORS[axis]; ctx.font = "13px Consolas"; ctx.textAlign = "left";
+    ctx.fillText(axis, 8, y0 + 22);
+    ctx.textAlign = "right";
+    ctx.fillText(fmt(angle, 2) + "\u00B0", x1, y0 + 4);
+  }
+
+  function render(last) {
+    ctx.clearRect(0, 0, W, H);
+    drawBar("roll", 0, last[0]);
+    drawBar("pitch", 1, last[1]);
+    drawBar("yaw", 2, last[2]);
+  }
+
+  /* 未启动 / 无 0x03 帧：表显 — 且清画布（不显示上一次的残留数值） */
+  function clearValues() {
+    AXES.forEach(function (a) {
+      byId("v-" + a).textContent = "—";
+      byId("r-" + a).textContent = "—";
+      byId("p-" + a).textContent = "—";
+    });
+    ctx.clearRect(0, 0, W, H);
+  }
+
+  /* —— /api/euler 100ms 轮询（只读，不隐含启动）—— */
+  function tick() {
+    fetch("/api/euler").then(function (r) { return r.json(); }).then(function (s) {
+      srv.mode = (s.mode === "sim" || s.mode === "real") ? s.mode : "none";
+      srv.target = s.target || "";
+      srv.connected = !!s.connected;
+      srv.frames = s.frames || 0;
+      srv.euler_frames = s.euler_frames || 0;
+      srv.seq_jumps = s.seq_jumps || 0;
+      srv.bad_resync = s.bad_resync || 0;
+      srv.texts = s.texts || [];
+      srv.cal = s.cal || null;
+      srv.cal_frames = s.cal_frames || 0;
+      srv.ack_frames = s.ack_frames || 0;
+      srv.imu = s.imu || {};
+      if (!targetTouched && srv.target) { byId("target").value = srv.target; }
+      renderChrome();
+      renderMeta();
+      renderCalib();
+      renderTexts();
+      if (!s.last_deg || srv.mode === "none") { clearValues(); return; }
+      var d = s.last_deg, rd = s.last_rad;
+      AXES.forEach(function (a, i) {
+        var av = Math.abs(d[i]);
+        if (av > peaks[a]) peaks[a] = av;
+        byId("v-" + a).textContent = fmt(d[i], 3) + " \u00B0";
+        byId("r-" + a).textContent = fmt(rd[i], 4);
+        byId("p-" + a).textContent = fmt(peaks[a], 3) + " \u00B0";
+      });
+      render(d);
+    }).catch(function () {
+      showFlash(t("meta.offline"));
+    });
+  }
+
+  /* 初始化：只按持久值铺文案 + 高亮模式 + 回填已持久目标，**不发任何 /api/mode 请求** */
+  byId("target").value = savedTarget;
+  applyI18n();
+  renderChrome();
+  renderMeta();
+  clearValues();
+  renderCalib();
+  setCmdBusy(false, "");
+  renderTexts();
+  tick();
+  setInterval(tick, 100);
+})();
+</script>
+</body>
+</html>

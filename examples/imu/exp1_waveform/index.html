@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>exp1 — IMU 裸数据直出</title>
+</head>
+<body>
+<!-- 薄壳（用户定案 2026-11-06：IMU 实验页逐级继承）。
+     本页只声明「我有哪些面板」，页面核心统一在 /assets/imu-page.js：
+         exp1 裸波形 ⊂ exp2（+零点校准）⊂ exp3（+欧拉，独立页保留）
+              ⊂ exp4（+四元数姿态）⊂ exp5（+位移轨迹）
+     panels 数组就是本页的能力清单（核心按它渲染，缺一即 bug；覆盖关系由
+     tests/imu_page_harness.js 断言）。加载不启动任何数据源。 -->
+<script>window.IMU_PAGE = {id: "exp1", panels: ["raw"]};</script>
+<script src="/assets/ui-shell.js"></script>
+<script src="/assets/live.js"></script>
+<script src="/assets/vendor/three.min.js"></script>
+<script src="/assets/imu-page.js"></script>
+</body>
+</html>

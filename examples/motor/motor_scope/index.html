@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>电机示波器（四槽 demo） · motor_scope</title>
+<!-- 薄壳（服务器架构）：页面核心在共享资产 /assets/motor-page.js，7 个电机实验共用。
+     本文件只做两件事：
+       1) 声明 window.MOTOR_PAGE —— id = 服务器 --page / URL 前缀（页面注册名
+          motor_pwm… 与实例目录 motor_scope 一一对应），scen = 本页期望的 0x06 场景号
+          （null = 本页用 0x05 遥测帧，无场景头）；
+       2) 给出宿主容器 #app（页面核心把头部/波形/槽位表/验收面板/日志挂进去）。
+     0x05 四槽 demo 帧（PWM_OPEN/SERVO/ENC_CLOSED/DC），无 0x06 场景头
+     数据源显式：加载不启动任何数据源，点「仿真/真实 → 启动/连接」才 POST /api/open。 -->
+</head>
+<body>
+<div id="app"></div>
+<script>
+window.MOTOR_PAGE = { id: "motor_scope", scen: null, title: "电机示波器（四槽 demo）" };
+</script>
+<script src="/assets/ui-shell.js"></script>
+<script src="/assets/motor-page.js"></script>
+</body>
+</html>

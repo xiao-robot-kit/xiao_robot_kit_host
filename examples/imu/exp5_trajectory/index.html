@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>exp5 — 3D 位移轨迹</title>
+</head>
+<body>
+<!-- 薄壳（用户定案 2026-11-06：IMU 实验页逐级继承）。
+     exp5 = exp4 的全部能力（裸波形 + 零点校准 + 欧拉 + 四元数姿态）
+            + 位移轨迹（SSE pos 驱动的 Three.js 渐隐轨迹）。
+     实现统一在 /assets/imu-page.js；加载不启动任何数据源。 -->
+<script>window.IMU_PAGE = {id: "exp5", panels: ["raw", "cal", "euler", "quat", "traj"]};</script>
+<script src="/assets/ui-shell.js"></script>
+<script src="/assets/live.js"></script>
+<script src="/assets/vendor/three.min.js"></script>
+<script src="/assets/imu-page.js"></script>
+</body>
+</html>

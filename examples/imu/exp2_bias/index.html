@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>exp2 — 裸数据 + 零点校准</title>
+</head>
+<body>
+<!-- 薄壳（用户定案 2026-11-06：IMU 实验页逐级继承）。
+     exp2 = exp1 的全部能力（裸波形）+ 零点校准（0x02 面板 + 「调零」按钮）。
+     零点校准自本页起在 exp2/exp4/exp5 三个服务器页全部可用（exp3 是独立页）。
+     实现统一在 /assets/imu-page.js；加载不启动任何数据源。 -->
+<script>window.IMU_PAGE = {id: "exp2", panels: ["raw", "cal"]};</script>
+<script src="/assets/ui-shell.js"></script>
+<script src="/assets/live.js"></script>
+<script src="/assets/vendor/three.min.js"></script>
+<script src="/assets/imu-page.js"></script>
+</body>
+</html>
